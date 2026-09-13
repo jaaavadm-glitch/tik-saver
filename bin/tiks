@@ -1,0 +1,273 @@
+#!/data/data/com.termux/files/usr/bin/bash
+
+# ═══════════════════════════════════════════════
+#  TikSaver v2.0 — TikTok Downloader for Termux
+#  Powered by TikWM API
+# ═══════════════════════════════════════════════
+
+VERSION="2.0.0"
+OUTPUT_DIR="/storage/emulated/0/Download/TikSaver"
+CONFIG_DIR="$HOME/.tiktok-saver"
+LOG_FILE="$CONFIG_DIR/history.log"
+
+# ═══════════════════════════════════════════════
+#  Colors
+# ═══════════════════════════════════════════════
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+MAGENTA='\033[1;35m'
+CYAN='\033[1;36m'
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+# ═══════════════════════════════════════════════
+#  Spinner
+# ═══════════════════════════════════════════════
+spinner() {
+    local pid=$1
+    local text=$2
+    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local colors=("$CYAN" "$MAGENTA" "$BLUE" "$CYAN")
+    local i=0
+    while kill -0 "$pid" 2>/dev/null; do
+        local c=${colors[$((i % 4))]}
+        printf "\r  ${c}${frames[$((i % 10))]}${NC} ${DIM}${text}${NC}"
+        i=$((i + 1))
+        sleep 0.08
+    done
+    printf "\r\033[K"
+}
+
+# ═══════════════════════════════════════════════
+#  Banner
+# ═══════════════════════════════════════════════
+show_banner() {
+    echo ""
+    echo -e "${CYAN}    ╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}████████╗${NC}${CYAN}██╗${NC}${MAGENTA}██╗${NC}  ${CYAN}██╗${NC}${MAGENTA}███████╗${NC}${CYAN}██╗${NC}     ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}╚══██╔══╝${NC}${CYAN}██║${NC}${MAGENTA}██║${NC} ${CYAN}██╔╝${NC}${MAGENTA}██╔════╝${NC}${CYAN}██║${NC}     ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}   ██║${NC}   ${CYAN}██║${NC}${MAGENTA}█████╔╝${NC} ${MAGENTA}███████╗${NC}${CYAN}██║${NC}     ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}   ██║${NC}   ${CYAN}██║${NC}${MAGENTA}██╔═██╗${NC} ${MAGENTA}╚════██║${NC}${CYAN}██║${NC}     ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}   ██║${NC}   ${CYAN}██║${NC}${MAGENTA}██║${NC}  ${MAGENTA}██╗${NC}${MAGENTA}███████║${NC}${CYAN}███████╗${NC}${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}  ${MAGENTA}   ╚═╝${NC}   ${CYAN}╚═╝${NC}${MAGENTA}╚═╝${NC}  ${MAGENTA}╚═╝${NC}${MAGENTA}╚══════╝${NC}${CYAN}╚══════╝${NC}${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}                                              ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}   ${YELLOW}⬇️  TikTok Video Downloader${NC}                  ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}   ${GREEN}⚡ Fast  ·  🆓 Free  ·  💧 No Watermark${NC}         ${CYAN}║${NC}"
+    echo -e "${CYAN}    ║${NC}   ${GRAY}v${VERSION}${NC}                                        ${CYAN}║${NC}"
+    echo -e "${CYAN}    ╚══════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════
+#  Help
+# ═══════════════════════════════════════════════
+show_help() {
+    show_banner
+    echo -e "  ${BOLD}${WHITE}USAGE${NC}"
+    echo -e "  ${GRAY}────────────────────────────────────────${NC}"
+    echo -e "  ${CYAN}tiks${NC} ${WHITE}<url>${NC}       ${DIM}Download TikTok video${NC}"
+    echo -e "  ${CYAN}tiks -h${NC}            ${DIM}Show this help${NC}"
+    echo -e "  ${CYAN}tiks -v${NC}            ${DIM}Show version${NC}"
+    echo -e "  ${CYAN}tiks -o${NC} ${WHITE}<url>${NC}       ${DIM}Open output folder${NC}"
+    echo ""
+    echo -e "  ${BOLD}${WHITE}EXAMPLES${NC}"
+    echo -e "  ${GRAY}────────────────────────────────────────${NC}"
+    echo -e "  ${DIM}\$${NC} tiks ${GRAY}\"https://vt.tiktok.com/ZSxxxxx/\"${NC}"
+    echo -e "  ${DIM}\$${NC} tiks ${GRAY}\"https://www.tiktok.com/@user/video/12345\"${NC}"
+    echo ""
+    echo -e "  ${BOLD}${WHITE}OUTPUT${NC}"
+    echo -e "  ${GRAY}────────────────────────────────────────${NC}"
+    echo -e "  ${GREEN}📁${NC} ${DIM}${OUTPUT_DIR}${NC}"
+    echo ""
+    echo -e "  ${BOLD}${WHITE}NOTE${NC}"
+    echo -e "  ${GRAY}────────────────────────────────────────${NC}"
+    echo -e "  ${YELLOW}⚠${NC}  ${DIM}Always wrap the URL in quotes${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════
+#  Main Download
+# ═══════════════════════════════════════════════
+do_download() {
+    local url="$1"
+
+    # Validate URL
+    if ! [[ "$url" =~ tiktok\.com ]]; then
+        echo ""
+        echo -e "  ${RED}✕${NC}  ${WHITE}Invalid TikTok URL${NC}"
+        echo -e "  ${GRAY}Please provide a valid tiktok.com link.${NC}"
+        echo ""
+        exit 1
+    fi
+
+    mkdir -p "$OUTPUT_DIR"
+    mkdir -p "$CONFIG_DIR"
+
+    # ─── Header ───
+    echo ""
+    echo -e "  ${MAGENTA}┌─────────────────────────────────────────────┐${NC}"
+    echo -e "  ${MAGENTA}│${NC}  ${BOLD}${WHITE}⬇  Downloading TikTok Video${NC}"
+    echo -e "  ${MAGENTA}└─────────────────────────────────────────────┘${NC}"
+    echo ""
+    echo -e "  ${GRAY}🔗${NC} ${DIM}${url}${NC}"
+    echo ""
+
+    # ─── Stage 1 ───
+    echo -e "  ${CYAN}[1/3]${NC} ${WHITE}Connecting to TikWM API...${NC}"
+    (sleep 0.4) &
+    spinner $! "Fetching video info"
+    echo -e "  ${GREEN}✓${NC}  ${DIM}Connected${NC}"
+
+    # ─── API Request ───
+    local encoded_url
+    encoded_url=$(printf %s "$url" | jq -sRr @uri)
+    local api_url="https://www.tikwm.com/api/?url=${encoded_url}&hd=1"
+
+    local response
+    response=$(curl -s --max-time 30 "$api_url")
+
+    if [ -z "$response" ]; then
+        echo -e "  ${RED}✕${NC}  ${WHITE}Network error${NC}"
+        echo -e "  ${GRAY}Could not reach the API. Check your connection.${NC}"
+        echo ""
+        exit 1
+    fi
+
+    # ─── Stage 2 ───
+    echo -e "  ${CYAN}[2/3]${NC} ${WHITE}Parsing response...${NC}"
+    (sleep 0.3) &
+    spinner $! "Extracting media stream"
+
+    local video_url title author duration
+    video_url=$(echo "$response" | jq -r '.data.hdplay // .data.play // empty')
+    title=$(echo "$response" | jq -r '.data.title // "TikTok Video"')
+    author=$(echo "$response" | jq -r '.data.author.nickname // .data.author.unique_id // ""')
+    duration=$(echo "$response" | jq -r '.data.duration // 0')
+
+    if [ -z "$video_url" ] || [ "$video_url" = "null" ]; then
+        echo -e "  ${RED}✕${NC}  ${WHITE}Failed to parse video${NC}"
+        local err_msg
+        err_msg=$(echo "$response" | jq -r '.msg // "Unknown error"')
+        echo -e "  ${GRAY}API: ${err_msg}${NC}"
+        echo ""
+        exit 1
+    fi
+
+    # Fix relative URL
+    if [[ "$video_url" != http* ]]; then
+        video_url="https://www.tikwm.com${video_url}"
+    fi
+
+    echo -e "  ${GREEN}✓${NC}  ${DIM}Stream found${NC}"
+
+    # ─── Video Info Box ───
+    echo ""
+    echo -e "  ${BLUE}┌─────────────────────────────────────────────┐${NC}"
+    echo -e "  ${BLUE}│${NC} ${BOLD}${WHITE}📹 Video Info${NC}"
+    echo -e "  ${BLUE}├─────────────────────────────────────────────┤${NC}"
+    
+    # Title (truncate)
+    local short_title="${title:0:40}"
+    [ ${#title} -gt 40 ] && short_title="${short_title}..."
+    echo -e "  ${BLUE}│${NC} ${GRAY}Title:${NC}  ${WHITE}${short_title}${NC}"
+    
+    if [ -n "$author" ] && [ "$author" != "null" ]; then
+        echo -e "  ${BLUE}│${NC} ${GRAY}Author:${NC} ${CYAN}@${author}${NC}"
+    fi
+    
+    if [ "$duration" != "0" ] && [ "$duration" != "null" ]; then
+        local mins=$((duration / 60))
+        local secs=$((duration % 60))
+        echo -e "  ${BLUE}│${NC} ${GRAY}Length:${NC} ${YELLOW}${mins}:$(printf "%02d" $secs)${NC}"
+    fi
+    
+    echo -e "  ${BLUE}└─────────────────────────────────────────────┘${NC}"
+    echo ""
+
+    # ─── Sanitize filename ───
+    local safe_title
+    safe_title=$(echo "$title" | tr -d '/\\:*?"<>|' | tr -s ' ' | cut -c1-80)
+    [ -z "$safe_title" ] && safe_title="tiktok_$(date +%s)"
+    
+    local output_file="${OUTPUT_DIR}/${safe_title}.mp4"
+
+    # ─── Stage 3: Download ───
+    echo -e "  ${CYAN}[3/3]${NC} ${WHITE}Downloading video...${NC}"
+    (sleep 0.3) &
+    spinner $! "Saving to storage"
+
+    curl -L -s --max-time 300 -o "$output_file" "$video_url"
+
+    if [ ! -f "$output_file" ] || [ ! -s "$output_file" ]; then
+        echo -e "  ${RED}✕${NC}  ${WHITE}Download failed${NC}"
+        echo -e "  ${GRAY}Could not save the file.${NC}"
+        echo ""
+        exit 1
+    fi
+
+    local file_size
+    file_size=$(du -h "$output_file" | cut -f1)
+
+    echo -e "  ${GREEN}✓${NC}  ${DIM}File saved${NC}"
+    echo ""
+
+    # ─── Success Box ───
+    echo -e "  ${GREEN}┌─────────────────────────────────────────────┐${NC}"
+    echo -e "  ${GREEN}│${NC}  ${BOLD}${WHITE}✅  Download Complete!${NC}"
+    echo -e "  ${GREEN}├─────────────────────────────────────────────┤${NC}"
+    echo -e "  ${GREEN}│${NC} ${GRAY}📁${NC} ${DIM}${OUTPUT_DIR}${NC}"
+    echo -e "  ${GREEN}│${NC} ${GRAY}💾${NC} ${CYAN}${file_size}${NC}"
+    echo -e "  ${GREEN}│${NC} ${GRAY}📝${NC} ${DIM}${safe_title}.mp4${NC}"
+    echo -e "  ${GREEN}└─────────────────────────────────────────────┘${NC}"
+    echo ""
+
+    # ─── Log ───
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | ${author:-unknown} | ${title} | ${file_size}" >> "$LOG_FILE"
+}
+
+# ═══════════════════════════════════════════════
+#  Main
+# ═══════════════════════════════════════════════
+
+# Check dependencies
+if ! command -v jq &> /dev/null; then
+    echo -e "${YELLOW}⚠  jq is not installed. Installing...${NC}"
+    pkg install jq -y > /dev/null 2>&1
+fi
+
+if ! command -v curl &> /dev/null; then
+    echo -e "${YELLOW}⚠  curl is not installed. Installing...${NC}"
+    pkg install curl -y > /dev/null 2>&1
+fi
+
+case "$1" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -v|--version)
+        echo -e "${MAGENTA}TikSaver${NC} ${BOLD}v${VERSION}${NC}"
+        exit 0
+        ;;
+    -o|--open)
+        if [ -d "$OUTPUT_DIR" ]; then
+            termux-open "$OUTPUT_DIR"
+        fi
+        exit 0
+        ;;
+    "")
+        show_banner
+        echo -e "  ${RED}✕${NC}  ${WHITE}No URL provided${NC}"
+        echo -e "  ${GRAY}Run ${CYAN}tiks -h${NC}${GRAY} for help.${NC}"
+        echo ""
+        exit 1
+        ;;
+    *)
+        do_download "$1"
+        ;;
+esac
